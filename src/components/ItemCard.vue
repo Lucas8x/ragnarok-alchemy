@@ -11,7 +11,7 @@ import {
 import { ITEMS } from '@/constants';
 
 const props = defineProps<{
-  spriteIds: number[];
+  itemsIds: readonly number[];
   result: {
     min: number;
     max: number;
@@ -20,8 +20,8 @@ const props = defineProps<{
 }>();
 
 function formatChance(n: number) {
-  const chance = parseFloat(n.toFixed(2)).toString();
-  return props.potionSuffix ? chance + ' poções' : chance + ' %';
+  const chanceStr = parseFloat(n.toFixed(2)).toString();
+  return chanceStr.concat(props.potionSuffix ? ' poções' : ' %');
 }
 
 const min = computed(() => formatChance(props.result.min));
@@ -34,18 +34,18 @@ const showAverage = computed(() => min.value !== max.value);
   <Card class="flex w-56 items-center justify-center">
     <CardContent class="space-y-2">
       <div class="flex max-w-40 flex-wrap items-center justify-center gap-2">
-        <TooltipProvider v-for="spriteId in spriteIds" :key="spriteId">
+        <TooltipProvider v-for="itemId in itemsIds" :key="itemId">
           <Tooltip>
             <TooltipTrigger>
-              <img class="size-6" :src="`items/${spriteId}.png`" alt="" />
+              <img class="size-6" :src="`items/${itemId}.png`" alt="" />
             </TooltipTrigger>
 
             <TooltipContent>
               <div class="flex flex-col items-center gap-1 text-center">
-                <p class="text-lg font-semibold">{{ ITEMS[spriteId] }}</p>
+                <p class="text-lg font-semibold">{{ ITEMS[itemId] }}</p>
                 <a
                   class="flex gap-1 underline"
-                  :href="`https://www.divine-pride.net/database/item/${spriteId}`"
+                  :href="`https://www.divine-pride.net/database/item/${itemId}`"
                   target="_blank"
                 >
                   DivinePride

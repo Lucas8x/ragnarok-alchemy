@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useLocalStorage } from '@vueuse/core';
 import ItemCard from '@/components/ItemCard.vue';
 import AttributeInput from '@/components/AttributeInput.vue';
@@ -7,9 +6,11 @@ import LevelSelect from '@/components/LevelSelect.vue';
 import GloriaToggle from '@/components/GloriaToggle.vue';
 import SectionBlock from '@/components/SectionBlock.vue';
 import BasicFooter from '@/components/BasicFooter.vue';
-import { SpPharmacyRandomness } from './constants';
+import ExtraInfo from '@/components/ExtraInfo.vue';
+import { PREPARE_POTION_ITEMS, SP_PHARMACY_ITEMS } from './constants';
+import { useAlchemy, type CharacterData } from './composables/useAlchemy';
 
-const data = useLocalStorage('data', {
+const data = useLocalStorage<CharacterData>('data', {
   baseLevel: 1,
   jobLevel: 1,
   intAttribute: 1,
@@ -24,94 +25,12 @@ const data = useLocalStorage('data', {
   fullChemicalProtection: 0
 });
 
-const gloriaBonus = computed(() => (data.value.gloriaEnabled ? 30 : 0));
-
-const specialPharmacyPotions = {
-  1: 7,
-  2: 8,
-  3: 8,
-  4: 9,
-  5: 9,
-  6: 10,
-  7: 10,
-  8: 11,
-  9: 11,
-  10: 12
-}[data.value.specialPharmacy];
-
-function getPotionChance(difficultyMin: number, difficultyMax: number) {
-  const i = data.value;
-
-  const preparePotionBonus = i.preparePotion * 3;
-  const dexChance = i.dexAttribute * 0.1;
-  const lukChance = (i.lukAttribute + i.blessLevel + gloriaBonus.value) * 0.1;
-  const intChance = (i.intAttribute + i.blessLevel) * 0.05;
-
-  const chance =
-    preparePotionBonus +
-    i.potionResearch +
-    i.instructionChange +
-    i.jobLevel * 0.2 +
-    dexChance +
-    lukChance +
-    intChance;
-
-  return {
-    min: Math.abs(chance + difficultyMin),
-    max: Math.abs(chance + difficultyMax)
-  };
-}
-
-function specialPharmacyComparison(creation: number, difficulty: number) {
-  const diff = creation - difficulty;
-  const max = specialPharmacyPotions || 0;
-
-  if (diff >= 400) return max;
-  else if (diff >= 300) return max - 3;
-  else if (diff >= 100) return max - 4;
-  else if (diff >= 1) return max - 5;
-  else return max - 6;
-}
-
-function specialPharmacy(itemRate: number) {
-  const i = data.value;
-
-  if (i.specialPharmacy === 0) {
-    return {
-      min: 0,
-      max: 0
-    };
-  }
-
-  const baseValue =
-    i.intAttribute +
-    i.blessLevel +
-    i.dexAttribute / 2 +
-    (i.lukAttribute + i.blessLevel + gloriaBonus.value) +
-    i.jobLevel +
-    (i.baseLevel - 100) +
-    i.potionResearch * 5;
-
-  const creationMin =
-    baseValue +
-    SpPharmacyRandomness.lowest +
-    i.fullChemicalProtection * SpPharmacyRandomness.chemicalProtection.lowest;
-
-  const creationMax =
-    baseValue +
-    SpPharmacyRandomness.highest +
-    i.fullChemicalProtection * SpPharmacyRandomness.chemicalProtection.highest;
-
-  const specificValue =
-    i.specialPharmacy === 1 ? 600 : 600 - 20 * i.specialPharmacy;
-
-  const difficulty = specificValue + itemRate;
-
-  return {
-    min: specialPharmacyComparison(creationMin, difficulty),
-    max: specialPharmacyComparison(creationMax, difficulty)
-  };
-}
+const {
+  preparePotionBaseChance,
+  specialPharmacyCreation,
+  getPotionChance,
+  specialPharmacy
+} = useAlchemy(data);
 </script>
 
 <template>
@@ -170,7 +89,7 @@ function specialPharmacy(itemRate: number) {
             v-model="data.fullChemicalProtection"
             label="Proteção Química Total"
             skill-id="479"
-            :tooltip="'Cada nível aumenta de 4 a 10 pontos na formula da Farmacologia Avançada .'"
+            :tooltip="'Cada nível da habilidade multiplicara 4 a 10 pontos na formula da Farmacologia Avançada.\n[Nível da habilidade x (4 ~ 10)]'"
           />
 
           <LevelSelect
@@ -185,83 +104,63 @@ function specialPharmacy(itemRate: number) {
       </SectionBlock>
 
       <SectionBlock title="Resultados" collapsible>
-        <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-          <ItemCard
-            :sprite-ids="[501, 503, 504]"
-            :result="getPotionChance(15, 25)"
+        <div class="flex flex-col items-center justify-center gap-4">
+          <ExtraInfo
+            title="Chance base"
+            :value="preparePotionBaseChance"
+            show-percentage
+            tooltip-text="Chance baseada na soma de atributos, habilidades e bônus."
           />
 
-          <ItemCard :sprite-ids="[970]" :result="getPotionChance(5, 15)" />
-
-          <ItemCard
-            :sprite-ids="[7135, 7136, 7137, 7138]"
-            :result="getPotionChance(-5, 15)"
-          />
-
-          <ItemCard
-            :sprite-ids="[505, 605, 606, 7142, 545, 12118, 12119, 12120, 12121]"
-            :result="getPotionChance(-5, -5)"
-          />
-
-          <ItemCard :sprite-ids="[546]" :result="getPotionChance(-10, -5)" />
-
-          <ItemCard
-            :sprite-ids="[547, 7139]"
-            :result="getPotionChance(-15, -5)"
-          />
-        </ul>
+          <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+            <ItemCard
+              v-for="item in PREPARE_POTION_ITEMS"
+              :key="item.ids.join('-')"
+              :items-ids="item.ids"
+              :result="
+                getPotionChance(item.difficulty.min, item.difficulty.max)
+              "
+            />
+          </ul>
+        </div>
       </SectionBlock>
 
       <SectionBlock title="Farmacologia Avançada" collapsible>
         <div class="flex w-full flex-col items-center justify-center gap-4">
+          <div class="flex flex-col gap-4 md:flex-row">
+            <ExtraInfo
+              title="Pontuação Bruta"
+              :value="specialPharmacyCreation.base"
+              :tooltip-text="'Pontuação bruta para a criação de poções especiais, calculada com base nos atributos e habilidades do personagem. \nNão considera a aleatoriedade da habilidade.'"
+            />
+            <ExtraInfo
+              title="Pontuação Mínima"
+              :value="specialPharmacyCreation.min"
+              tooltip-text="A menor pontuação considerando a aleatoriedade mais baixa possível para a criação de poções especiais."
+            />
+            <ExtraInfo
+              title="Pontuação Máxima"
+              :value="specialPharmacyCreation.max"
+              tooltip-text="A maior pontuação considerando a aleatoriedade mais alta possível para a criação de poções especiais."
+            />
+          </div>
+
           <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
             <ItemCard
-              :sprite-ids="[12428, 12422, 12425]"
-              :result="specialPharmacy(10)"
-              potion-suffix
-            />
-
-            <ItemCard
-              :sprite-ids="[6212, 12426]"
-              :result="specialPharmacy(15)"
-              potion-suffix
-            />
-
-            <ItemCard
-              :sprite-ids="[12436, 12423, 12427]"
-              :result="specialPharmacy(20)"
-              potion-suffix
-            />
-
-            <ItemCard
-              :sprite-ids="[12437, 6210, 6211]"
-              :result="specialPharmacy(30)"
-              potion-suffix
-            />
-
-            <ItemCard
-              :sprite-ids="[12475, 12424]"
-              :result="specialPharmacy(40)"
-              potion-suffix
-            />
-
-            <ItemCard
-              :sprite-ids="[1100003]"
-              :result="specialPharmacy(80)"
+              v-for="item in SP_PHARMACY_ITEMS.filter((i) => i.rate <= 80)"
+              :key="item.ids.join('-')"
+              :items-ids="item.ids"
+              :result="specialPharmacy(item.rate)"
               potion-suffix
             />
           </ul>
 
           <ul class="grid gap-4 sm:grid-cols-2">
             <ItemCard
-              :sprite-ids="[100232, 100233]"
-              :result="specialPharmacy(120)"
-              potion-suffix
-            />
-
-            <ItemCard
-              :sprite-ids="[1100004, 1100005, 100231]"
-              :result="specialPharmacy(160)"
+              v-for="item in SP_PHARMACY_ITEMS.filter((i) => i.rate > 80)"
+              :key="item.ids.join('-')"
+              :items-ids="item.ids"
+              :result="specialPharmacy(item.rate)"
               potion-suffix
             />
           </ul>
